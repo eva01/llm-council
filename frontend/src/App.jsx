@@ -9,11 +9,22 @@ function App() {
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [theme, setTheme] = useState(
+    () =>
+      localStorage.getItem('llm-theme') ||
+      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  );
 
   // Load conversations on mount
   useEffect(() => {
     loadConversations();
   }, []);
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('llm-theme', theme);
+  }, [theme]);
 
   // Load conversation details when selected
   useEffect(() => {
@@ -25,7 +36,14 @@ function App() {
   const loadConversations = async () => {
     try {
       const convs = await api.listConversations();
-      setConversations(convs);
+      setConversations(
+        convs.map((c) => ({
+          id: c.id,
+          title: c.title || 'New Conversation',
+          createdAt: c.createdAt || c.created_at,
+          messageCount: c.messageCount ?? c.message_count ?? 0,
+        }))
+      );
     } catch (error) {
       console.error('Failed to load conversations:', error);
     }
@@ -44,7 +62,12 @@ function App() {
     try {
       const newConv = await api.createConversation();
       setConversations([
-        { id: newConv.id, created_at: newConv.created_at, message_count: 0 },
+        {
+          id: newConv.id,
+          createdAt: newConv.createdAt,
+          title: newConv.title,
+          messageCount: 0,
+        },
         ...conversations,
       ]);
       setCurrentConversationId(newConv.id);
@@ -55,6 +78,25 @@ function App() {
 
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
+  };
+
+  const handleDeleteConversation = async (id) => {
+    try {
+      await api.deleteConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      // Refresh from backend to reflect latest titles/counts
+      loadConversations();
+      if (id === currentConversationId) {
+        setCurrentConversationId(null);
+        setCurrentConversation(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  };
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
   const handleSendMessage = async (content) => {
@@ -188,6 +230,9 @@ function App() {
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
+        onDeleteConversation={handleDeleteConversation}
+        onToggleTheme={toggleTheme}
+        theme={theme}
       />
       <ChatInterface
         conversation={currentConversation}
