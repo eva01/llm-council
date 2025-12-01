@@ -67,6 +67,12 @@ export class ConversationListDO {
       return json(list);
     }
 
+    if (request.method === "PUT" && url.pathname === "/list") {
+      const nextList = (await request.json()) as ConversationMetadata[];
+      await storage.put("list", nextList);
+      return new Response(null, { status: 204 });
+    }
+
     if (request.method === "POST" && url.pathname === "/upsert") {
       const meta = (await request.json()) as ConversationMetadata;
       const list = (await storage.get<ConversationMetadata[]>("list")) ?? [];
@@ -173,11 +179,16 @@ export async function deleteConversation(env: Env, id: string) {
   await convStub.fetch("https://conversation/delete", { method: "DELETE" });
 
   const listStub = env.CONVERSATION_LIST.get(env.CONVERSATION_LIST.idFromName(LIST_DO_NAME));
-  await listStub.fetch("https://list/remove", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id })
-  });
+  const listResp = await listStub.fetch("https://list/list");
+  if (listResp.ok) {
+    const list = (await listResp.json()) as ConversationMetadata[];
+    const nextList = list.filter((item) => item.id !== id);
+    await listStub.fetch("https://list/list", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nextList)
+    });
+  }
 }
 
 export async function updateTitle(env: Env, id: string, title: string) {
